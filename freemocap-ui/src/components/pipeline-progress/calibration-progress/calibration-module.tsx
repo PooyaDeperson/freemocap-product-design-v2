@@ -1,65 +1,16 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useState } from "react";
 import SubactionHeader from "@/components/ui-components/SubactionHeader";
 import ToggleComponent from "@/components/ui-components/ToggleComponent";
+import ValueSelector from "@/components/ui-components/ValueSelector";
 import IconButton from "@/components/ui-components/IconButton";
 import DropdownButton from "@/components/ui-components/DropdownButton.tsx";
 import CalibrationSettings from "./calibration-settings";
 import ButtonSm from "@/components/ui-components/ButtonSm";
-import { useCalibration } from "@/hooks/useCalibration";
-import { useElectronIPC } from "@/services";
-import { useAppDispatch, useAppSelector } from "@/store";
-import {
-  calibrationAutoLoadDismissed,
-  calibrationLoadedFromBundle,
-  loadCalibrationToml,
-  selectLoadedCalibration,
-} from "@/store/slices/calibration";
-
-type CalibrationSource = "record" | "import-videos" | "import-toml";
-
-const SOURCE_ICONS: Record<CalibrationSource, string> = {
-  record: "record-icon",
-  "import-videos": "importVideos-icon",
-  "import-toml": "tomlfile-icon",
-};
 
 const CalibrationModule = () => {
-  const dispatch = useAppDispatch();
-  const { api, isElectron } = useElectronIPC();
-  const loadedCalibration = useAppSelector(selectLoadedCalibration);
-
-  const {
-    config,
-    error,
-    isLoading,
-    isRecording,
-    recordingProgress,
-    canStartRecording,
-    updateCalibrationConfig,
-    setManualRecordingPath,
-    dispatchStartCalibrationRecording,
-    dispatchStopCalibrationRecording,
-    calibrateSelectedRecording,
-    clearError,
-  } = useCalibration();
-
+  const [isElectron] = useState(true); // Added missing state variable
   const [showCalibrationSettings, setShowCalibrationSettings] = useState(true);
-  const [calibrationSource, setCalibrationSource] = useState<CalibrationSource>("record");
-
-  const isCalibrated = !!loadedCalibration;
-
-  const [calibrationPathDir, calibrationPathFilename] = useMemo(() => {
-    const path = loadedCalibration?.path ?? "";
-    const splitIndex = path.lastIndexOf("/") !== -1 ? path.lastIndexOf("/") : path.lastIndexOf("\\");
-    if (splitIndex === -1) return ["", path];
-    return [path.slice(0, splitIndex + 1), path.slice(splitIndex + 1)];
-  }, [loadedCalibration?.path]);
-
-  const charucoTags = [
-    `${config.charucoBoard.squares_x}x${config.charucoBoard.squares_y}`,
-    `${config.charucoBoard.square_length_mm}mm`,
-    config.solverMethod === "anipose" ? "Anipose" : "Pyceres",
-  ];
+  const [isCalibrated, setIsCalibrated] = useState(false); // Set to false for now
 
   const handleToggleSettings = () => {
     setShowCalibrationSettings(!showCalibrationSettings);
@@ -69,40 +20,6 @@ const CalibrationModule = () => {
     setShowCalibrationSettings(false);
   };
 
-  const handleRecordAndCalibrate = useCallback(() => {
-    setCalibrationSource("record");
-    dispatch(calibrationAutoLoadDismissed(null));
-    dispatchStartCalibrationRecording();
-  }, [dispatch, dispatchStartCalibrationRecording]);
-
-  const handleImportVideos = useCallback(async () => {
-    if (!isElectron || !api) return;
-    const result: string | null = await api.fileSystem.selectDirectory.mutate();
-    if (result) {
-      await setManualRecordingPath(result);
-      setCalibrationSource("import-videos");
-      dispatch(calibrationAutoLoadDismissed(null));
-      calibrateSelectedRecording();
-    }
-  }, [api, isElectron, dispatch, setManualRecordingPath, calibrateSelectedRecording]);
-
-  const handleImportToml = useCallback(async () => {
-    if (!isElectron || !api) return;
-    const result: string | null = await api.fileSystem.selectTomlFile.mutate();
-    if (result) {
-      setCalibrationSource("import-toml");
-      dispatch(calibrationAutoLoadDismissed(null));
-      dispatch(loadCalibrationToml({ path: result, force: true }));
-    }
-  }, [api, isElectron, dispatch]);
-
-  const handleClearCalibration = useCallback(() => {
-    if (loadedCalibration) {
-      dispatch(calibrationAutoLoadDismissed(loadedCalibration.path));
-    }
-    dispatch(calibrationLoadedFromBundle(null));
-  }, [dispatch, loadedCalibration]);
-
   const dropdownItems = (
     <div className="flex flex-col gap-1">
       <ButtonSm
@@ -110,103 +27,40 @@ const CalibrationModule = () => {
         text="Record and Calibrate"
         className="full-width"
         textClass="text-align-left"
-        onClick={handleRecordAndCalibrate}
-        disabled={!canStartRecording || !isElectron}
+        onClick={() => {}}
       />
       <ButtonSm
         iconClass="importVideos-icon"
         text="Import Calibration videos"
         className="full-width"
         textClass="text-align-left"
-        onClick={handleImportVideos}
-        disabled={!isElectron || isLoading}
+        onClick={() => {}}
       />
       <ButtonSm
         iconClass="tomlfile-icon"
         text="Import .toml file"
         className="full-width"
         textClass="text-align-left"
-        onClick={handleImportToml}
-        disabled={!isElectron || isLoading}
+        onClick={() => {}}
       />
     </div>
   );
 
-  const errorBanner = error && (
-    <div className="toast-notification error flex items-center justify-content-space-between">
-      <p className="text sm">{error}</p>
-      <button className="button icon-button" onClick={clearError}>
-        <span className="icon clear-icon icon-size-20" />
-      </button>
-    </div>
-  );
-
-  // Recording in progress
-  if (isRecording) {
-    return (
-      <div className="flex flex-col p-1 bg-middark br-1 pos-rel gap-1">
-        {errorBanner}
-        <div className="flex flex-row items-center">
-          <div className="flex flex-row flex-1 justify-content-space-between items-center w-100">
-            <SubactionHeader text="Calibration" />
-            <div className="flex flex-row gap-1 items-center">
-              <p className="text md text-gray p-1">{recordingProgress.toFixed(0)}%</p>
-              <IconButton
-                icon="cancelcalibrate-icon"
-                className="button sm"
-                onClick={dispatchStopCalibrationRecording}
-                tooltip
-                tooltipText="Stop recording & calibrate"
-                tooltipPosition="pos-left"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="charuco-settings-action-container flex flex-row items-center gap-1">
-          {charucoTags.map((tag) => (
-            <span key={tag} className="text-gray tag text-nowrap text md text-align-left">
-              {tag}
-            </span>
-          ))}
-        </div>
-        <div className="w-full overflow-hidden br-1" style={{ height: 8, backgroundColor: "var(--color-bg-secondary)" }}>
-          <div
-            style={{
-              width: `${recordingProgress}%`,
-              height: "100%",
-              backgroundColor: "var(--color-info)",
-              transition: "width 0.3s",
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Calibrated
+  // If calibrated, show dummy UI
   if (isCalibrated) {
     return (
-      <div className="flex flex-col p-1 bg-middark br-1 pos-rel" style={{ minWidth: 0 }}>
-        {errorBanner}
-        <div className="flex flex-row items-center" style={{ minWidth: 0 }}>
-          <div className="flex flex-row flex-1 justify-content-space-between items-center w-100" style={{ minWidth: 0 }}>
-            <div className="flex flex-row items-center flex-1" style={{ minWidth: 0 }}>
+      <div className="flex flex-col p-1 bg-middark br-1 pos-rel">
+        <div className="flex flex-row items-center">
+          <div className="flex flex-row flex-1 justify-content-space-between items-center w-100">
+            <div className="flex flex-row items-center">
               <div className="calibrate-icon-group flex flex-row items-center">
                 <span className="icon calibrated-icon icon-size-20" />
                 <p className="text md text-success p-1">Calibrated</p>
               </div>
-              <div className="recording-path-preview tooltip-wrapper pos-rel flex flex-row items-center flex-1 p-1" style={{ minWidth: 0, overflow: "visible" }}>
-                <div className="recording-path-part">
-                  <p className="text-gray text md">{calibrationPathDir}</p>
-                </div>
-                <p className="text-gray text md text-nowrap text-align-left" style={{ flexShrink: 0 }}>{calibrationPathFilename}</p>
-                {loadedCalibration?.path && (
-                  <div className="tooltip-container elevated-sharp pos-bottom p-01 br-2 bg-dark" style={{ minWidth: "auto", width: 270, maxWidth: "90vw" }}>
-                    <div className="tooltip-inner br-1 pl-2 pr-2 pt-1 pb-1 border-1 border-mid-black border-solid">
-                      <p className="text-white text md" style={{ fontFamily: "monospace", whiteSpace: "normal", wordBreak: "break-all" }}>{loadedCalibration.path}</p>
-                    </div>
-                  </div>
-                )}
+              <div className="calibrated-path-group flex flex-row items-center">
+                <p className="text md text-nowrap flex flex-row w-full text-gray p-1">
+                  C:Path:where-it-was-calibared-
+                </p>
               </div>
             </div>
             <div className="flex flex-row gap-1 items-center">
@@ -224,34 +78,46 @@ const CalibrationModule = () => {
         <div className="groupe-2-action- flex flex-row pos-rel justify-content-space-between items-center gap-1">
           <div className="flex flex-row items-center how-it-was-made-group">
             <div className="how-it-was-made-inner-group pos-rel flex flex-row items-center">
-              <span className={`icon ${SOURCE_ICONS[calibrationSource]} icon-size-20`} />
+              <span className="icon record-icon icon-size-20" />
+              {/* This is important, change icon
+              and show how it was originally the calibration done
+              like
+              if done by recording show record-icon
+              if used videos show importVideos-icon
+              if used by importing toml file show tomlfile-icon
+              */}
               <span className="icon snaptogrid-icon icon-size-20" />
             </div>
             <div className="charuco-group-on-it-was-adhjusted- charuco-settings-action-container flex flex-row items-center gap-1">
-              {charucoTags.map((tag) => (
-                <span key={tag} className="text-gray tag text-nowrap text md text-align-left">
-                  {tag}
-                </span>
-              ))}
+              <span className="text-gray tag text-nowrap text md text-align-left">
+                5x3
+              </span>
+              <span className="text-gray tag text-nowrap text md text-align-left">
+                35mm
+              </span>
+              <span className="text-gray tag text-nowrap text md text-align-left">
+                Anipose
+              </span>
             </div>
           </div>
-          <IconButton
+             <IconButton
             icon="cancelcalibrate-icon"
             className="button sm"
-            onClick={handleClearCalibration}
+            onClick={() => {}} // shows onboarding tooltips
             tooltip
-            tooltipText="Clear calibration"
+            tooltipText="Abort Calibration"
             tooltipPosition="pos-left"
           />
         </div>
+        
       </div>
     );
   }
 
-  // Not calibrated, not recording
+  // Original UI when not calibrated
   return (
     <div className="flex flex-col p-1 bg-middark br-1 pos-rel ">
-      {errorBanner}
+      {/* Content goes here */}
       <div className="flex flex-row items-center">
         <div className="flex flex-row flex-1 justify-content-space-between items-center w-100">
           <SubactionHeader text="Calibration" />
@@ -278,11 +144,15 @@ const CalibrationModule = () => {
         </div>
         <div className="group-2 flex flex-row pos-rel items-center gap-1">
           <div className="group-2.1 charuco-settings-action-container flex flex-row items-center gap-1">
-            {charucoTags.map((tag) => (
-              <span key={tag} className="text-gray tag text-nowrap text md text-align-left">
-                {tag}
-              </span>
-            ))}
+            <span className="text-gray tag text-nowrap text md text-align-left">
+              5x3
+            </span>
+            <span className="text-gray tag text-nowrap text md text-align-left">
+              35mm
+            </span>
+            <span className="text-gray tag text-nowrap text md text-align-left">
+              Anipose
+            </span>
           </div>
           <div className="group-2.2 pos-rel flex flex-col items-center">
             <span className="icon settings-icon icon-size-20" />
@@ -308,10 +178,12 @@ const CalibrationModule = () => {
       </div>
       <ToggleComponent
         text="Align to initial Charuco ground plane"
+        className=""
         iconClass="snaptogrid-icon"
-        isToggled={config.useGroundplane}
-        onToggle={(checked) => updateCalibrationConfig({ useGroundplane: checked })}
-        disabled={isLoading}
+        defaultToggelState=""
+        isToggled=""
+        onToggle=""
+        disabled=""
       />
     </div>
   );
